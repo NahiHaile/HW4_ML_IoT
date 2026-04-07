@@ -20,19 +20,34 @@ BATCH_SIZE = 64
 # 2. STEP 9: TRANSFER LEARNING MODEL
 # ==========================================
 def build_transfer_model():
-    # Load pre-trained weights (weights='imagenet')
-    base_model = tf.keras.applications.MobileNetV2(
-        input_shape=(32, 32, 3), include_top=False, weights='imagenet'
-    )
-    base_model.trainable = False # FREEZE THE BRAIN
-
-    model = models.Sequential([
-        base_model,
-        layers.GlobalAveragePooling2D(),
-        layers.Dense(10) # 10 classes for CIFAR-10
-    ])
+    # 1. Input Layer
+    inputs = layers.Input(shape=(32, 32, 3))
     
-    model.compile(optimizer='adam',
+    # 2. Resize from 32x32 up to 96x96 so MobileNetV2 can "see" it better
+    x = layers.Resizing(96, 96)(inputs)
+    
+    # 3. Load Base Model
+    base_model = tf.keras.applications.MobileNetV2(
+        input_shape=(96, 96, 3), include_top=False, weights='imagenet'
+    )
+    
+    # 4. FINE TUNING: Unfreeze the base model!
+    #base_model.trainable = True 
+    base_model.trainable = False # FREEZE ALL LAYERS TO START (OPTIONAL, CAN UNFREEZE LATER)
+    
+    # Optional: Freeze the bottom layers and only fine-tune the top layers
+    # for layer in base_model.layers[:100]:
+    #     layer.trainable = False
+
+    x = base_model(x)
+    x = layers.GlobalAveragePooling2D()(x)
+    #x = layers.Dropout(0.2)(x) # Good practice when fine-tuning
+    outputs = layers.Dense(10)(x)
+    
+    model = tf.keras.Model(inputs, outputs)
+    
+    # CRITICAL: Use a very tiny learning rate (1e-5) for fine-tuning
+    model.compile(optimizer=tf.keras.optimizers.Adam(1e-5),
                   loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
                   metrics=['accuracy'])
     return model
